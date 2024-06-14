@@ -2,7 +2,7 @@
 # encoding: utf-8
 # @data:2022/11/18
 # @author:aiden
-# 导航搬运
+# Navigation and transportation
 import math
 import rospy
 import numpy as np

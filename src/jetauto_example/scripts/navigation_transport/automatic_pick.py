@@ -2,7 +2,7 @@
 # encoding: utf-8
 # @data:2022/11/18
 # @author:aiden
-# 追踪拾取
+# track pickup
 import os
 import sys
 import cv2
@@ -59,7 +59,7 @@ broadcast_status = ''
 status = "approach"
 count_stop = 0
 count_turn = 0
-
+# todo look at this file
 lab_data = common.get_yaml_data("/home/jetauto/jetauto_software/lab_tool/lab_config.yaml")
 
 def cancel_callback(msg):
@@ -85,7 +85,7 @@ def start_pick_callback(msg):
     yaw_angle = 90
     
     # change this to set how far the gripper moves out to grab block. lower the number the farther out it goes
-    stop_y = 270
+    stop_y = 265
     # original stop_y = 388 too close
     
     stop = True
@@ -142,33 +142,33 @@ def colorDetect(img):
     img_h, img_w = img.shape[:2]
     frame_resize = cv2.resize(img, size, interpolation=cv2.INTER_NEAREST)
     frame_gb = cv2.GaussianBlur(frame_resize, (3, 3), 3)
-    frame_lab = cv2.cvtColor(frame_gb, cv2.COLOR_BGR2LAB)  # 将图像转换到LAB空间
+    frame_lab = cv2.cvtColor(frame_gb, cv2.COLOR_BGR2LAB)  # Convert image to LAB space
     frame_mask = cv2.inRange(frame_lab, tuple(lab_data['lab']['Mono'][target_color]['min']), tuple(lab_data['lab']['Mono'][target_color]['max']))  # 对原图像和掩模进行位运算
 
-    eroded = cv2.erode(frame_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # 腐蚀
-    dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # 膨胀
+    eroded = cv2.erode(frame_mask, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # 腐蚀 - corrosion?
+    dilated = cv2.dilate(eroded, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))  # 膨胀 - Expansion?
     
-    contours = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[-2]  # 找出轮廓
+    contours = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[-2]  # find the outline
 
     center_x, center_y, angle = -1, -1, -1
     if len(contours) != 0:
-        areaMaxContour, area_max = common.get_area_max_contour(contours, 10)  # 找出最大轮廓
+        areaMaxContour, area_max = common.get_area_max_contour(contours, 10)  # Find the maximum contour
         if areaMaxContour is not None:
-            if 100 < area_max:  # 有找到最大面积
-                rect = cv2.minAreaRect(areaMaxContour)#最小外接矩形
+            if 100 < area_max:  # Found the largest area
+                rect = cv2.minAreaRect(areaMaxContour)#Minimum enclosing rectangle
                 angle = rect[2]
-                box = np.int0(cv2.boxPoints(rect))#最小外接矩形的四个顶点
+                box = np.int0(cv2.boxPoints(rect))#Four vertices of the smallest circumscribing rectangle
                 for j in range(4):
                     box[j, 0] = int(misc.val_map(box[j, 0], 0, size[0], 0, img_w))
                     box[j, 1] = int(misc.val_map(box[j, 1], 0, size[1], 0, img_h))
 
-                cv2.drawContours(img, [box], -1, (0,255,255), 2)#画出四个点组成的矩形
-                #获取矩形的对角点
+                cv2.drawContours(img, [box], -1, (0,255,255), 2)#Draw a rectangle composed of four points
+                #Get the diagonal points of the rectangle
                 ptime_start_x, ptime_start_y = box[0, 0], box[0, 1]
                 pt3_x, pt3_y = box[2, 0], box[2, 1]
                 radius = abs(ptime_start_x - pt3_x)
-                center_x, center_y = int((ptime_start_x + pt3_x) / 2), int((ptime_start_y + pt3_y) / 2)#中心点       
-                cv2.circle(img, (center_x, center_y), 5, (0, 255, 255), -1)#画出中心点
+                center_x, center_y = int((ptime_start_x + pt3_x) / 2), int((ptime_start_y + pt3_y) / 2)#center point   
+                cv2.circle(img, (center_x, center_y), 5, (0, 255, 255), -1)#draw center point
 
     return center_x, center_y, angle
 
@@ -213,20 +213,20 @@ def pick_handle(usb_cam_img):
 
     twist = Twist()
     if not pick or debug:
-        object_center_x, object_center_y, object_angle = colorDetect(usb_cam_img)  # 获取物体颜色的中心和角度
+        object_center_x, object_center_y, object_angle = colorDetect(usb_cam_img)  # Get the center and angle of the object's color
         if debug:
-            print(object_center_x, object_center_y)  # 打印当前物体离中心的像素距离
+            print(object_center_x, object_center_y)  # Print the pixel distance of the current object from the center
         elif object_center_x > 0:
             if broadcast and broadcast_status == 'find_target':
                 broadcast_status = 'crawl_succeeded'
                 voice_play.play('find_target', language=language)
-            ########电机pid处理#########
-            # 以图像的中心点的x，y坐标作为设定的值，以当前x，y坐标作为输入#
+            ########Motor pid processing#########
+            # Take the x, y coordinates of the center point of the image as the set value, and take the current x, y coordinates as the input#
             linear_pid.SetPoint = stop_y
             if abs(object_center_y - stop_y) <= d_y:
                 object_center_y = stop_y
             if status != "align":
-                linear_pid.update(object_center_y)  # 更新pid
+                linear_pid.update(object_center_y)  # Update PID
                 tmp = linear_base_speed + linear_pid.output
 
                 linear_speed = tmp
@@ -241,7 +241,7 @@ def pick_handle(usb_cam_img):
             if abs(object_center_x - stop_x) <= d_x:
                 object_center_x = stop_x
             if status != "align":
-                angular_pid.update(object_center_x)  # 更新pid
+                angular_pid.update(object_center_x)  # Update pid
                 tmp = angular_base_speed + angular_pid.output
 
                 angular_speed = tmp
@@ -265,7 +265,7 @@ def pick_handle(usb_cam_img):
                         yaw_pid.SetPoint = 0
                         if abs(object_angle - 0) <= 1:
                             object_angle = 0
-                    yaw_pid.update(object_angle)  # 更新pid
+                    yaw_pid.update(object_angle)  # Update pid
                     tmp = yaw_pid.output
                     yaw_angle = tmp
                     if tmp > 1:
@@ -303,16 +303,16 @@ def place_handle(usb_cam_img):
 
     twist = Twist()
     if not place or debug:
-        object_center_x, object_center_y, object_angle = colorDetect(usb_cam_img)  # 获取物体颜色的中心和角度
+        object_center_x, object_center_y, object_angle = colorDetect(usb_cam_img)  # Get the center and angle of the object's color
         if debug:
-            print(object_center_x, object_center_y)  # 打印当前物体离中心的像素距离
+            print(object_center_x, object_center_y)  # Print the pixel distance of the current object from the center
         elif object_center_x > 0:
-            ########电机pid处理#########
-            # 以图像的中心点的x，y坐标作为设定的值，以当前x，y坐标作为输入#
+            ########Motor pid processing#########
+            # Take the x, y coordinates of the center point of the image as the set value, and take the current x, y coordinates as the input#
             linear_pid.SetPoint = stop_y
             if abs(object_center_y - stop_y) <= d_y:
                 object_center_y = stop_y
-            linear_pid.update(object_center_y)  # 更新pid
+            linear_pid.update(object_center_y)  # update pid
             tmp = linear_base_speed + linear_pid.output
 
             linear_speed = tmp
@@ -327,7 +327,7 @@ def place_handle(usb_cam_img):
             if abs(object_center_x - stop_x) <= d_x:
                 object_center_x = stop_x
 
-            angular_pid.update(object_center_x)  # 更新pid
+            angular_pid.update(object_center_x)  # update pid
             tmp = angular_base_speed + angular_pid.output
 
             angular_speed = tmp
@@ -351,7 +351,7 @@ def place_handle(usb_cam_img):
 def image_callback(ros_image):
     global place, stop
 
-    rgb_image = np.ndarray(shape=(ros_image.height, ros_image.width, 3), dtype=np.uint8, buffer=ros_image.data)  # 将自定义图像消息转化为图像
+    rgb_image = np.ndarray(shape=(ros_image.height, ros_image.width, 3), dtype=np.uint8, buffer=ros_image.data)  # Convert custom image messages into images
     if start_pick:
         stop = True
         result_image = pick_handle(cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR))
